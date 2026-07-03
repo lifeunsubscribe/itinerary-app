@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wanderly - Travel Itinerary Planner</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .icon {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            vertical-align: middle;
+        }
+
+        .destination-card {
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .destination-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .destination-overlay {
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 50%, transparent 100%);
+        }
+
+        .suggestion-card {
+            transition: all 0.3s ease;
+        }
+
+        .suggestion-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .activity-type-badge {
+            background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .calendar-day:hover {
+            background-color: #f3f4f6;
+        }
+
+        .calendar-day.selected {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .calendar-day.in-range {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .modal-backdrop {
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Simple icon components
+        const Icons = {
+            Plus: () => React.createElement('span', { className: 'icon' }, '+'),
+            MapPin: () => React.createElement('span', { className: 'icon' }, '📍'),
+            Clock: () => React.createElement('span', { className: 'icon' }, '🕐'),
+            Calendar: () => React.createElement('span', { className: 'icon' }, '📅'),
+            Trash2: () => React.createElement('span', { className: 'icon' }, '🗑️'),
+            Edit3: () => React.createElement('span', { className: 'icon' }, '✏️'),
+            Save: () => React.createElement('span', { className: 'icon' }, '💾'),
+            X: () => React.createElement('span', { className: 'icon' }, '✕'),
+            Map: () => React.createElement('span', { className: 'icon' }, '🗺️'),
+            Search: () => React.createElement('span', { className: 'icon' }, '🔍'),
+            Star: () => React.createElement('span', { className: 'icon' }, '⭐'),
+            Loading: () => React.createElement('span', { className: 'icon animate-spin' }, '⏳'),
+            Filter: () => React.createElement('span', { className: 'icon' }, '🔽'),
+            Image: () => React.createElement('span', { className: 'icon' }, '🖼️'),
+            Users: () => React.createElement('span', { className: 'icon' }, '👥'),
+            Share: () => React.createElement('span', { className: 'icon' }, '📤'),
+            Heart: () => React.createElement('span', { className: 'icon' }, '❤️'),
+            ChevronLeft: () => React.createElement('span', { className: 'icon' }, '‹'),
+            ChevronRight: () => React.createElement('span', { className: 'icon' }, '›'),
+        };
+
+        // Popular destinations with iconic photos
+        const POPULAR_DESTINATIONS = [
+            {
+                name: "Paris, France",
+                image: "https://images.unsplash.com/photo-1431274172761-fca41d930114?w=400&h=300&fit=crop",
+                description: "City of Love and Lights"
+            },
+            {
+                name: "Tokyo, Japan",
+                image: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&h=300&fit=crop",
+                description: "Modern metropolis meets tradition"
+            },
+            {
+                name: "New York, NY",
+                image: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&h=300&fit=crop",
+                description: "The city that never sleeps"
+            },
+            {
+                name: "Rome, Italy",
+                image: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=400&h=300&fit=crop",
+                description: "Eternal city of history"
+            },
+            {
+                name: "Bali, Indonesia",
+                image: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&h=300&fit=crop",
+                description: "Tropical paradise"
+            },
+            {
+                name: "London, UK",
+                image: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=400&h=300&fit=crop",
+                description: "Royal heritage and culture"
+            }
+        ];
+
+        // Activity types for TripAdvisor API
+        const ACTIVITY_TYPES = [
+            { value: 'restaurants', label: 'Food & Dining', emoji: '🍽️' },
+            { value: 'attractions', label: 'Attractions & Tours', emoji: '🎭' },
+            { value: 'hotels', label: 'Hotels & Lodging', emoji: '🏨' },
+            { value: 'geos', label: 'Places & Areas', emoji: '📍' },
+            { value: 'activities', label: 'Activities & Entertainment', emoji: '🎪' }
+        ];
+
+        const ItineraryApp = () => {
+            const [itineraries, setItineraries] = useState([]);
+            const [currentItinerary, setCurrentItinerary] = useState(null);
+            const [showNewItinerary, setShowNewItinerary] = useState(false);
+            const [editingActivity, setEditingActivity] = useState(null);
+            const [showMap, setShowMap] = useState(false);
+            const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
+            const [showSuggestions, setShowSuggestions] = useState(false);
+            const [suggestions, setSuggestions] = useState([]);
+            const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+            const [selectedActivityType, setSelectedActivityType] = useState('restaurants');
+            const [tripAdvisorApiKey, setTripAdvisorApiKey] = useState('');
+            const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+            const [currentStep, setCurrentStep] = useState('destination'); // destination, dates, guests, sharing
+            const [calendarMonth, setCalendarMonth] = useState(new Date());
+            const [selectedDates, setSelectedDates] = useState({ start: null, end: null });
+            const [guestCount, setGuestCount] = useState(1);
+            const [collaborators, setCollaborators] = useState([]);
+            const [newCollaboratorEmail, setNewCollaboratorEmail] = useState('');
+
+            const destinationInputRef = useRef(null);
+            const locationInputRef = useRef(null);
+            const mapRef = useRef(null);
+            const autocompleteRefs = useRef({});
+
+            const [newItineraryForm, setNewItineraryForm] = useState({
+                title: '',
+                destination: '',
+                startDate: '',
+                endDate: ''
+            });
+
+            const [newActivityForm, setNewActivityForm] = useState({
+                title: '',
+                time: '',
+                location: '',
+                description: '',
+                date: ''
+            });
+
+            // Get destination image
+            const getDestinationImage = (destination) => {
+                const popular = POPULAR_DESTINATIONS.find(dest =>
+                    destination.toLowerCase().includes(dest.name.toLowerCase().split(',')[0])
+                );
+                if (popular) return popular.image;
+
+                // Fallback based on country/region
+                const fallbacks = {
+                    'france': 'https://images.unsplash.com/photo-1431274172761-fca41d930114?w=400&h=300&fit=crop',
+                    'japan': 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&h=300&fit=crop',
+                    'italy': 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=400&h=300&fit=crop',
+                    'spain': 'https://images.unsplash.com/photo-1544943905-6ad2c5b6e5e7?w=400&h=300&fit=crop',
+                    'greece': 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400&h=300&fit=crop',
+                    'thailand': 'https://images.unsplash.com/photo-1528181304800-259b08848526?w=400&h=300&fit=crop',
+                    'uk': 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=400&h=300&fit=crop',
+                    'usa': 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&h=300&fit=crop'
+                };
+
+                for (const [country, image] of Object.entries(fallbacks)) {
+                    if (destination.toLowerCase().includes(country)) {
+                        return image;
+                    }
+                }
+
+                return 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400&h=300&fit=crop';
+            };
+
+            // Load saved API key on mount
+            useEffect(() => {
+                const savedApiKey = localStorage.getItem('tripAdvisorApiKey');
+                if (savedApiKey) {
+                    setTripAdvisorApiKey(savedApiKey);
+                } else {
+                    const apiKey = 'EC83D5B656574764AFF42DD9E0960BE3';
+                    setTripAdvisorApiKey(apiKey);
+                    localStorage.setItem('tripAdvisorApiKey', apiKey);
+                }
+            }, []);
+
+            // Load Google Maps API
+            useEffect(() => {
+                if (window.google && window.google.maps) {
+                    setIsGoogleMapsLoaded(true);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBqOElaccMFiQmEbW1ly0JyaTeUJBcvebY&libraries=places&loading=async`;
+                script.async = true;
+                script.defer = true;
+                script.onload = () => {
+                    setIsGoogleMapsLoaded(true);
+                };
+                script.onerror = (error) => {
+                    console.warn('Google Maps API failed to load:', error);
+                };
+                document.body.appendChild(script);
+
+                return () => {
+                    document.body.removeChild(script);
+                };
+            }, []);
+
+            // Initialize autocomplete for activity location input
+            useEffect(() => {
+                if (isGoogleMapsLoaded && locationInputRef.current && window.google && currentItinerary) {
+                    try {
+                        const autocomplete = new window.google.maps.places.Autocomplete(
+                            locationInputRef.current,
+                            {
+                                fields: ['formatted_address', 'geometry', 'name']
+                            }
+                        );
+
+                        autocomplete.addListener('place_changed', () => {
+                            const place = autocomplete.getPlace();
+                            if (place && place.formatted_address) {
+                                setNewActivityForm(prev => ({
+                                    ...prev,
+                                    location: place.formatted_address
+                                }));
+                            }
+                        });
+
+                        autocompleteRefs.current.location = autocomplete;
+                    } catch (error) {
+                        console.warn('Failed to initialize location autocomplete:', error);
+                    }
+                }
+            }, [isGoogleMapsLoaded, currentItinerary]);
+
+            // Calendar functions
+            const getDaysInMonth = (date) => {
+                return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            };
+
+            const getFirstDayOfMonth = (date) => {
+                return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+            };
+
+            const isDateInRange = (date) => {
+                if (!selectedDates.start || !selectedDates.end) return false;
+                return date >= selectedDates.start && date <= selectedDates.end;
+            };
+
+            const handleDateClick = (day) => {
+                const clickedDate = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+
+                if (!selectedDates.start || (selectedDates.start && selectedDates.end)) {
+                    setSelectedDates({ start: clickedDate, end: null });
+                } else if (clickedDate < selectedDates.start) {
+                    setSelectedDates({ start: clickedDate, end: selectedDates.start });
+                } else {
+                    setSelectedDates({ ...selectedDates, end: clickedDate });
+                }
+            };
+
+            const formatDateRange = () => {
+                if (!selectedDates.start) return 'Select dates';
+                if (!selectedDates.end) return selectedDates.start.toLocaleDateString();
+                return `${selectedDates.start.toLocaleDateString()} - ${selectedDates.end.toLocaleDateString()}`;
+            };
+
+            const addCollaborator = () => {
+                if (newCollaboratorEmail && !collaborators.includes(newCollaboratorEmail)) {
+                    setCollaborators([...collaborators, newCollaboratorEmail]);
+                    setNewCollaboratorEmail('');
+                }
+            };
+
+            const removeCollaborator = (email) => {
+                setCollaborators(collaborators.filter(c => c !== email));
+            };
+
+            // TripAdvisor API integration with CORS proxy
+            const searchTripAdvisorSuggestions = async (location, activityType) => {
+                setLoadingSuggestions(true);
+                setSuggestions([]);
+
+                try {
+                    const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                    const searchUrl = `${proxyUrl}${encodeURIComponent(`https://api.content.tripadvisor.com/api/v1/location/search?key=${tripAdvisorApiKey}&searchQuery=${encodeURIComponent(location)}&language=en`)}`;
+
+                    const searchResponse = await fetch(searchUrl);
+
+                    if (!searchResponse.ok) {
+                        throw new Error(`Search failed: ${searchResponse.status}`);
+                    }
+
+                    const searchData = await searchResponse.json();
+
+                    if (!searchData.data || searchData.data.length === 0) {
+                        throw new Error('No location found');
+                    }
+
+                    const locationId = searchData.data[0].location_id;
+
+                    let endpoint;
+                    switch (activityType) {
+                        case 'restaurants':
+                            endpoint = 'restaurants';
+                            break;
+                        case 'attractions':
+                            endpoint = 'attractions';
+                            break;
+                        case 'hotels':
+                            endpoint = 'hotels';
+                            break;
+                        default:
+                            endpoint = 'attractions';
+                    }
+
+                    const suggestionsUrl = `${proxyUrl}${encodeURIComponent(`https://api.content.tripadvisor.com/api/v1/location/${locationId}/${endpoint}?key=${tripAdvisorApiKey}&language=en&limit=10`)}`;
+
+                    const suggestionsResponse = await fetch(suggestionsUrl);
+
+                    if (!suggestionsResponse.ok) {
+                        throw new Error(`Suggestions failed: ${suggestionsResponse.status}`);
+                    }
+
+                    const suggestionsData = await suggestionsResponse.json();
+                    setSuggestions(suggestionsData.data || []);
+
+                } catch (error) {
+                    console.warn('TripAdvisor API not accessible, using demo data:', error.message);
+
+                    const generateMockData = (location, type) => {
+                        const baseData = {
+                            restaurants: [
+                                {
+                                    location_id: `rest_${Date.now()}_1`,
+                                    name: `Local Bistro in ${location.split(',')[0]}`,
+                                    description: 'Authentic local cuisine with fresh ingredients and traditional recipes. Highly recommended by locals.',
+                                    rating: '4.5',
+                                    num_reviews: '1,234',
+                                    address: `${location.split(',')[0]} Historic District`,
+                                    photo: { images: { medium: { url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=300&h=200&fit=crop' } } },
+                                    cuisine: [{ name: 'Local' }]
+                                },
+                                {
+                                    location_id: `rest_${Date.now()}_2`,
+                                    name: `Fine Dining Restaurant`,
+                                    description: 'Upscale dining experience with creative dishes and excellent service. Perfect for special occasions.',
+                                    rating: '4.7',
+                                    num_reviews: '856',
+                                    address: `Downtown ${location.split(',')[0]}`,
+                                    photo: { images: { medium: { url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=300&h=200&fit=crop' } } },
+                                    cuisine: [{ name: 'International' }]
+                                }
+                            ],
+                            attractions: [
+                                {
+                                    location_id: `attr_${Date.now()}_1`,
+                                    name: `${location.split(',')[0]} Historic Center`,
+                                    description: 'Explore the rich history and culture of this beautiful destination with guided tours and stunning architecture.',
+                                    rating: '4.6',
+                                    num_reviews: '2,567',
+                                    address: `Central ${location.split(',')[0]}`,
+                                    photo: { images: { medium: { url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=200&fit=crop' } } }
+                                },
+                                {
+                                    location_id: `attr_${Date.now()}_2`,
+                                    name: 'Local Museum',
+                                    description: 'Discover fascinating exhibits showcasing local art, history, and culture. Interactive displays for all ages.',
+                                    rating: '4.3',
+                                    num_reviews: '1,890',
+                                    address: `Museum District, ${location.split(',')[0]}`,
+                                    photo: { images: { medium: { url: 'https://images.unsplash.com/photo-1554907984-15263bfd63bd?w=300&h=200&fit=crop' } } }
+                                }
+                            ],
+                            hotels: [
+                                {
+                                    location_id: `hotel_${Date.now()}_1`,
+                                    name: `Luxury Hotel ${location.split(',')[0]}`,
+                                    description: 'Premium accommodation with world-class amenities, spa services, and exceptional hospitality.',
+                                    rating: '4.8',
+                                    num_reviews: '1,456',
+                                    address: `Luxury District, ${location.split(',')[0]}`,
+                                    photo: { images: { medium: { url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=300&h=200&fit=crop' } } }
+                                }
+                            ]
+                        };
+
+                        return baseData[type] || baseData.attractions;
+                    };
+
+                    setSuggestions(generateMockData(location, activityType));
+                }
+
+                setLoadingSuggestions(false);
+            };
+
+            const addSuggestionAsActivity = (suggestion) => {
+                const activity = {
+                    id: Date.now(),
+                    title: suggestion.name,
+                    location: suggestion.address || suggestion.location_string || '',
+                    description: `${suggestion.description || ''}\n\nRating: ${suggestion.rating || 'N/A'} (${suggestion.num_reviews || 0} reviews)\nSource: TripAdvisor`,
+                    date: newActivityForm.date || new Date().toISOString().split('T')[0],
+                    time: '',
+                    image: suggestion.photo?.images?.medium?.url || '',
+                    rating: suggestion.rating,
+                    source: 'tripadvisor'
+                };
+
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: [...currentItinerary.activities, activity].sort((a, b) =>
+                        new Date(a.date + ' ' + (a.time || '00:00')) - new Date(b.date + ' ' + (b.time || '00:00'))
+                    )
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+                setShowSuggestions(false);
+            };
+
+            const createItinerary = () => {
+                if (!newItineraryForm.destination) return;
+
+                const itinerary = {
+                    id: Date.now(),
+                    title: newItineraryForm.title || `Trip to ${newItineraryForm.destination.split(',')[0]}`,
+                    destination: newItineraryForm.destination,
+                    startDate: selectedDates.start ? selectedDates.start.toISOString().split('T')[0] : '',
+                    endDate: selectedDates.end ? selectedDates.end.toISOString().split('T')[0] : '',
+                    guestCount: guestCount,
+                    collaborators: collaborators,
+                    activities: [],
+                    image: getDestinationImage(newItineraryForm.destination)
+                };
+
+                setItineraries([...itineraries, itinerary]);
+                setCurrentItinerary(itinerary);
+                resetNewItineraryForm();
+            };
+
+            const resetNewItineraryForm = () => {
+                setNewItineraryForm({ title: '', destination: '', startDate: '', endDate: '' });
+                setShowNewItinerary(false);
+                setCurrentStep('destination');
+                setSelectedDates({ start: null, end: null });
+                setGuestCount(1);
+                setCollaborators([]);
+                setNewCollaboratorEmail('');
+            };
+
+            const addActivity = () => {
+                if (!newActivityForm.title || !newActivityForm.date) return;
+
+                const activity = {
+                    id: Date.now(),
+                    ...newActivityForm,
+                    source: 'manual'
+                };
+
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: [...currentItinerary.activities, activity].sort((a, b) =>
+                        new Date(a.date + ' ' + (a.time || '00:00')) - new Date(b.date + ' ' + (b.time || '00:00'))
+                    )
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+                setNewActivityForm({ title: '', time: '', location: '', description: '', date: '' });
+            };
+
+            const deleteActivity = (activityId) => {
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: currentItinerary.activities.filter(a => a.id !== activityId)
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+            };
+
+            const deleteItinerary = (itineraryId) => {
+                setItineraries(itineraries.filter(it => it.id !== itineraryId));
+                if (currentItinerary && currentItinerary.id === itineraryId) {
+                    setCurrentItinerary(null);
+                }
+            };
+
+            const formatDate = (dateString) => {
+                return new Date(dateString).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            };
+
+            const groupActivitiesByDate = (activities) => {
+                return activities.reduce((groups, activity) => {
+                    const date = activity.date;
+                    if (!groups[date]) groups[date] = [];
+                    groups[date].push(activity);
+                    return groups;
+                }, {});
+            };
+
+            // New Itinerary Modal Component
+            const NewItineraryModal = () => {
+                if (!showNewItinerary) return null;
+
+                const renderCalendar = () => {
+                    const daysInMonth = getDaysInMonth(calendarMonth);
+                    const firstDay = getFirstDayOfMonth(calendarMonth);
+                    const days = [];
+
+                    // Empty cells for days before the first day of the month
+                    for (let i = 0; i < firstDay; i++) {
+                        days.push(React.createElement('div', { key: `empty-${i}`, className: 'calendar-day' }));
+                    }
+
+                    // Days of the month
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+                        const isSelected = (selectedDates.start && date.getTime() === selectedDates.start.getTime()) ||
+                            (selectedDates.end && date.getTime() === selectedDates.end.getTime());
+                        const isInRange = isDateInRange(date);
+                        const isPast = date < new Date().setHours(0, 0, 0, 0);
+
+                        days.push(
+                            React.createElement('div', {
+                                key: day,
+                                className: `calendar-day ${isSelected ? 'selected' : ''} ${isInRange ? 'in-range' : ''} ${isPast ? 'opacity-50 cursor-not-allowed' : ''}`,
+                                onClick: isPast ? null : () => handleDateClick(day)
+                            }, day)
+                        );
+                    }
+
+                    return days;
+                };
+
+                return React.createElement('div', { className: "fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex items-center justify-center z-50 p-4" },
+                    React.createElement('div', { className: "bg-white rounded-2xl p-0 max-w-2xl w-full max-h-[90vh] overflow-y-auto" },
+                        // Header
+                        React.createElement('div', { className: "flex justify-between items-center p-6 border-b" },
+                            React.createElement('h2', { className: "text-2xl font-semibold" },
+                                currentStep === 'destination' ? 'Where to?' :
+                                    currentStep === 'dates' ? 'When?' :
+                                        currentStep === 'guests' ? 'Who\'s coming?' : 'Share your trip'
+                            ),
+                            React.createElement('button', {
+                                onClick: resetNewItineraryForm,
+                                className: "text-gray-400 hover:text-gray-600 text-2xl"
+                            }, React.createElement(Icons.X))
+                        ),
+
+                        // Content based on step
+                        React.createElement('div', { className: "p-6" },
+                            currentStep === 'destination' && React.createElement('div', { className: "space-y-6" },
+                                React.createElement('input', {
+                                    type: "text",
+                                    placeholder: "Search destinations",
+                                    value: newItineraryForm.destination,
+                                    onChange: (e) => setNewItineraryForm({ ...newItineraryForm, destination: e.target.value }),
+                                    className: "w-full p-4 text-lg border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                }),
+                                React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-3 gap-4" },
+                                    POPULAR_DESTINATIONS.map(dest => React.createElement('div', {
+                                        key: dest.name,
+                                        onClick: () => setNewItineraryForm({ ...newItineraryForm, destination: dest.name }),
+                                        className: "destination-card cursor-pointer rounded-xl overflow-hidden"
+                                    },
+                                        React.createElement('div', { className: "relative h-32" },
+                                            React.createElement('img', {
+                                                src: dest.image,
+                                                alt: dest.name,
+                                                className: "w-full h-full object-cover"
+                                            }),
+                                            React.createElement('div', { className: "destination-overlay absolute inset-0" }),
+                                            React.createElement('div', { className: "absolute bottom-2 left-2 text-white" },
+                                                React.createElement('p', { className: "font-semibold text-sm" }, dest.name.split(',')[0]),
+                                                React.createElement('p', { className: "text-xs opacity-90" }, dest.description)
+                                            )
+                                        )
+                                    ))
+                                )
+                            ),
+
+                            currentStep === 'dates' && React.createElement('div', { className: "space-y-6" },
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('button', {
+                                        onClick: () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1)),
+                                        className: "p-2 hover:bg-gray-100 rounded-full"
+                                    }, React.createElement(Icons.ChevronLeft)),
+                                    React.createElement('h3', { className: "text-lg font-semibold" },
+                                        calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                                    ),
+                                    React.createElement('button', {
+                                        onClick: () => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1)),
+                                        className: "p-2 hover:bg-gray-100 rounded-full"
+                                    }, React.createElement(Icons.ChevronRight))
+                                ),
+                                React.createElement('div', { className: "calendar-grid" },
+                                    ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(day =>
+                                        React.createElement('div', { key: day, className: "p-2 text-center font-medium text-gray-500" }, day)
+                                    ),
+                                    ...renderCalendar()
+                                ),
+                                React.createElement('div', { className: "mt-4 p-4 bg-gray-50 rounded-lg" },
+                                    React.createElement('p', { className: "text-sm text-gray-600" }, "Selected dates: " + formatDateRange())
+                                )
+                            ),
+
+                            currentStep === 'guests' && React.createElement('div', { className: "space-y-6" },
+                                React.createElement('div', { className: "flex items-center justify-between p-4 border border-gray-200 rounded-xl" },
+                                    React.createElement('div', null,
+                                        React.createElement('h4', { className: "font-medium" }, "Guests"),
+                                        React.createElement('p', { className: "text-sm text-gray-500" }, "Ages 13 or above")
+                                    ),
+                                    React.createElement('div', { className: "flex items-center gap-3" },
+                                        React.createElement('button', {
+                                            onClick: () => setGuestCount(Math.max(1, guestCount - 1)),
+                                            className: "w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:border-gray-400"
+                                        }, '-'),
+                                        React.createElement('span', { className: "min-w-[2rem] text-center" }, guestCount),
+                                        React.createElement('button', {
+                                            onClick: () => setGuestCount(guestCount + 1),
+                                            className: "w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:border-gray-400"
+                                        }, '+')
+                                    )
+                                )
+                            ),
+
+                            currentStep === 'sharing' && React.createElement('div', { className: "space-y-6" },
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-2" }, "Trip Title (Optional)"),
+                                    React.createElement('input', {
+                                        type: "text",
+                                        placeholder: `Trip to ${newItineraryForm.destination.split(',')[0]}`,
+                                        value: newItineraryForm.title,
+                                        onChange: (e) => setNewItineraryForm({ ...newItineraryForm, title: e.target.value }),
+                                        className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    })
+                                ),
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-2" }, "Invite Collaborators"),
+                                    React.createElement('div', { className: "flex gap-2 mb-3" },
+                                        React.createElement('input', {
+                                            type: "email",
+                                            placeholder: "Enter email address",
+                                            value: newCollaboratorEmail,
+                                            onChange: (e) => setNewCollaboratorEmail(e.target.value),
+                                            className: "flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                            onKeyPress: (e) => e.key === 'Enter' && addCollaborator()
+                                        }),
+                                        React.createElement('button', {
+                                            onClick: addCollaborator,
+                                            className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        }, "Add")
+                                    ),
+                                    collaborators.length > 0 && React.createElement('div', { className: "space-y-2" },
+                                        React.createElement('p', { className: "text-sm text-gray-600" }, "Collaborators:"),
+                                        collaborators.map(email => React.createElement('div', {
+                                            key: email,
+                                            className: "flex items-center justify-between p-2 bg-blue-50 rounded-lg"
+                                        },
+                                            React.createElement('span', { className: "text-sm" }, email),
+                                            React.createElement('button', {
+                                                onClick: () => removeCollaborator(email),
+                                                className: "text-red-500 hover:text-red-700 text-sm"
+                                            }, React.createElement(Icons.X))
+                                        ))
+                                    )
+                                ),
+                                React.createElement('div', { className: "p-4 bg-blue-50 rounded-lg" },
+                                    React.createElement('h4', { className: "font-medium text-blue-800 mb-2" }, "Trip Summary"),
+                                    React.createElement('p', { className: "text-sm text-blue-700" },
+                                        `Destination: ${newItineraryForm.destination}`
+                                    ),
+                                    selectedDates.start && React.createElement('p', { className: "text-sm text-blue-700" },
+                                        `Dates: ${formatDateRange()}`
+                                    ),
+                                    React.createElement('p', { className: "text-sm text-blue-700" },
+                                        `Guests: ${guestCount}`
+                                    ),
+                                    collaborators.length > 0 && React.createElement('p', { className: "text-sm text-blue-700" },
+                                        `Collaborators: ${collaborators.length}`
+                                    )
+                                )
+                            )
+                        ),
+
+                        // Footer with navigation
+                        React.createElement('div', { className: "flex justify-between items-center p-6 border-t bg-gray-50" },
+                            React.createElement('button', {
+                                onClick: () => {
+                                    if (currentStep === 'destination') resetNewItineraryForm();
+                                    else if (currentStep === 'dates') setCurrentStep('destination');
+                                    else if (currentStep === 'guests') setCurrentStep('dates');
+                                    else if (currentStep === 'sharing') setCurrentStep('guests');
+                                },
+                                className: "px-6 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                            }, currentStep === 'destination' ? 'Cancel' : 'Back'),
+                            React.createElement('button', {
+                                onClick: () => {
+                                    if (currentStep === 'destination' && newItineraryForm.destination) setCurrentStep('dates');
+                                    else if (currentStep === 'dates' && selectedDates.start) setCurrentStep('guests');
+                                    else if (currentStep === 'guests') setCurrentStep('sharing');
+                                    else if (currentStep === 'sharing') createItinerary();
+                                },
+                                disabled: (currentStep === 'destination' && !newItineraryForm.destination) ||
+                                    (currentStep === 'dates' && !selectedDates.start),
+                                className: "px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            }, currentStep === 'sharing' ? 'Create Trip' : 'Next')
+                        )
+                    )
+                );
+            };
+
+            // Suggestions Modal Component
+            const SuggestionsModal = () => {
+                if (!showSuggestions) return null;
+
+                return React.createElement('div', { className: "fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex items-center justify-center z-50 p-4" },
+                    React.createElement('div', { className: "bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto" },
+                        React.createElement('div', { className: "flex justify-between items-center mb-6" },
+                            React.createElement('h3', { className: "text-2xl font-bold" }, "Activity Suggestions"),
+                            React.createElement('button', {
+                                onClick: () => setShowSuggestions(false),
+                                className: "text-gray-500 hover:text-gray-700 text-2xl"
+                            }, React.createElement(Icons.X))
+                        ),
+
+                        // Activity Type Selection
+                        React.createElement('div', { className: "mb-6" },
+                            React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-2" }, "Activity Type:"),
+                            React.createElement('div', { className: "flex flex-wrap gap-2 mb-4" },
+                                ACTIVITY_TYPES.map(type => React.createElement('button', {
+                                    key: type.value,
+                                    onClick: () => setSelectedActivityType(type.value),
+                                    className: `px-4 py-2 rounded-lg border transition-colors flex items-center gap-2 ${selectedActivityType === type.value
+                                        ? 'bg-black text-white border-black'
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                        }`
+                                }, type.emoji, type.label))
+                            ),
+                            React.createElement('button', {
+                                onClick: () => searchTripAdvisorSuggestions(currentItinerary.destination, selectedActivityType),
+                                disabled: loadingSuggestions,
+                                className: "bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50"
+                            },
+                                loadingSuggestions ? React.createElement(Icons.Loading) : React.createElement(Icons.Search),
+                                loadingSuggestions ? 'Searching...' : 'Get Suggestions'
+                            )
+                        ),
+
+                        // Suggestions Grid
+                        React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-6" },
+                            suggestions.map(suggestion => React.createElement('div', {
+                                key: suggestion.location_id,
+                                className: "suggestion-card border border-gray-200 rounded-xl overflow-hidden bg-white"
+                            },
+                                suggestion.photo?.images?.medium?.url && React.createElement('img', {
+                                    src: suggestion.photo.images.medium.url,
+                                    alt: suggestion.name,
+                                    className: "w-full h-48 object-cover"
+                                }),
+                                React.createElement('div', { className: "p-4" },
+                                    React.createElement('div', { className: "flex justify-between items-start mb-2" },
+                                        React.createElement('h4', { className: "font-semibold text-lg" }, suggestion.name),
+                                        suggestion.rating && React.createElement('div', { className: "flex items-center gap-1 text-yellow-600" },
+                                            React.createElement(Icons.Star),
+                                            React.createElement('span', { className: "text-sm" }, suggestion.rating)
+                                        )
+                                    ),
+                                    suggestion.address && React.createElement('p', { className: "text-sm text-gray-600 mb-2 flex items-center gap-1" },
+                                        React.createElement(Icons.MapPin),
+                                        suggestion.address
+                                    ),
+                                    suggestion.description && React.createElement('p', { className: "text-sm text-gray-700 mb-3 line-clamp-3" },
+                                        suggestion.description.length > 120 ? suggestion.description.substring(0, 120) + '...' : suggestion.description
+                                    ),
+                                    suggestion.num_reviews && React.createElement('p', { className: "text-xs text-gray-500 mb-3" },
+                                        `${suggestion.num_reviews} reviews`
+                                    ),
+                                    React.createElement('button', {
+                                        onClick: () => addSuggestionAsActivity(suggestion),
+                                        className: "w-full bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+                                    }, React.createElement(Icons.Plus), "Add to Itinerary")
+                                )
+                            ))
+                        ),
+
+                        suggestions.length === 0 && !loadingSuggestions && React.createElement('div', { className: "text-center py-8 text-gray-500" },
+                            React.createElement('p', null, "No suggestions found. Try selecting a different activity type.")
+                        )
+                    )
+                );
+            };
+
+            if (!currentItinerary) {
+                return React.createElement('div', { className: "min-h-screen bg-white" },
+                    React.createElement(NewItineraryModal),
+
+                    // Header
+                    React.createElement('div', { className: "border-b border-gray-200 px-6 py-4" },
+                        React.createElement('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
+                            React.createElement('h1', { className: "text-2xl font-bold text-black" }, "Wanderly"),
+                            React.createElement('button', {
+                                onClick: () => setShowNewItinerary(true),
+                                className: "bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2"
+                            }, React.createElement(Icons.Plus), "Create Trip")
+                        )
+                    ),
+
+                    React.createElement('div', { className: "max-w-7xl mx-auto p-6" },
+                        // Hero Section
+                        React.createElement('div', { className: "text-center mb-12" },
+                            React.createElement('h2', { className: "text-4xl font-bold text-gray-900 mb-4" }, "Plan your perfect getaway"),
+                            React.createElement('p', { className: "text-xl text-gray-600 max-w-2xl mx-auto" }, "Discover amazing destinations and create unforgettable itineraries with AI-powered suggestions")
+                        ),
+
+                        // Popular Destinations
+                        React.createElement('div', { className: "mb-12" },
+                            React.createElement('h3', { className: "text-2xl font-bold text-gray-900 mb-6" }, "Popular destinations"),
+                            React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+                                POPULAR_DESTINATIONS.map(dest => React.createElement('div', {
+                                    key: dest.name,
+                                    onClick: () => {
+                                        setNewItineraryForm({ ...newItineraryForm, destination: dest.name });
+                                        setShowNewItinerary(true);
+                                    },
+                                    className: "destination-card cursor-pointer rounded-2xl overflow-hidden bg-white shadow-sm border border-gray-200"
+                                },
+                                    React.createElement('div', { className: "relative h-64" },
+                                        React.createElement('img', {
+                                            src: dest.image,
+                                            alt: dest.name,
+                                            className: "w-full h-full object-cover"
+                                        }),
+                                        React.createElement('div', { className: "destination-overlay absolute inset-0" }),
+                                        React.createElement('div', { className: "absolute bottom-4 left-4 text-white" },
+                                            React.createElement('h4', { className: "font-bold text-xl mb-1" }, dest.name.split(',')[0]),
+                                            React.createElement('p', { className: "text-sm opacity-90" }, dest.description)
+                                        ),
+                                        React.createElement('div', { className: "absolute top-4 right-4" },
+                                            React.createElement('button', { className: "p-2 rounded-full bg-white bg-opacity-20 backdrop-blur-sm hover:bg-opacity-30 transition-all" },
+                                                React.createElement(Icons.Heart)
+                                            )
+                                        )
+                                    )
+                                ))
+                            )
+                        ),
+
+                        // Your Trips Section
+                        itineraries.length > 0 && React.createElement('div', null,
+                            React.createElement('h3', { className: "text-2xl font-bold text-gray-900 mb-6" }, "Your trips"),
+                            React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+                                itineraries.map(itinerary => React.createElement('div', {
+                                    key: itinerary.id,
+                                    className: "destination-card bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-200 cursor-pointer"
+                                },
+                                    React.createElement('div', { className: "relative h-48" },
+                                        React.createElement('img', {
+                                            src: itinerary.image || getDestinationImage(itinerary.destination),
+                                            alt: itinerary.destination,
+                                            className: "w-full h-full object-cover"
+                                        }),
+                                        React.createElement('div', { className: "destination-overlay absolute inset-0" }),
+                                        React.createElement('div', { className: "absolute top-4 right-4 flex gap-2" },
+                                            React.createElement('button', {
+                                                onClick: (e) => {
+                                                    e.stopPropagation();
+                                                    deleteItinerary(itinerary.id);
+                                                },
+                                                className: "p-2 rounded-full bg-white bg-opacity-20 backdrop-blur-sm hover:bg-opacity-30 transition-all"
+                                            }, React.createElement(Icons.Trash2))
+                                        ),
+                                        itinerary.collaborators && itinerary.collaborators.length > 0 && React.createElement('div', { className: "absolute top-4 left-4" },
+                                            React.createElement('div', { className: "flex items-center gap-1 px-2 py-1 rounded-full bg-white bg-opacity-20 backdrop-blur-sm" },
+                                                React.createElement(Icons.Users),
+                                                React.createElement('span', { className: "text-white text-xs" }, itinerary.collaborators.length + 1)
+                                            )
+                                        )
+                                    ),
+                                    React.createElement('div', {
+                                        className: "p-4",
+                                        onClick: () => setCurrentItinerary(itinerary)
+                                    },
+                                        React.createElement('h4', { className: "font-bold text-lg text-gray-900 mb-1" }, itinerary.title),
+                                        React.createElement('p', { className: "text-gray-600 text-sm mb-2 flex items-center gap-1" },
+                                            React.createElement(Icons.MapPin),
+                                            itinerary.destination
+                                        ),
+                                        itinerary.startDate && itinerary.endDate && React.createElement('p', { className: "text-gray-500 text-sm mb-2 flex items-center gap-1" },
+                                            React.createElement(Icons.Calendar),
+                                            new Date(itinerary.startDate).toLocaleDateString() + " - " + new Date(itinerary.endDate).toLocaleDateString()
+                                        ),
+                                        React.createElement('div', { className: "flex justify-between items-center" },
+                                            React.createElement('span', { className: "text-gray-500 text-sm" },
+                                                `${itinerary.activities.length} activities`
+                                            ),
+                                            itinerary.guestCount && React.createElement('span', { className: "text-gray-500 text-sm flex items-center gap-1" },
+                                                React.createElement(Icons.Users),
+                                                itinerary.guestCount
+                                            )
+                                        )
+                                    )
+                                ))
+                            )
+                        )
+                    )
+                );
+            }
+
+            const activitiesByDate = groupActivitiesByDate(currentItinerary.activities);
+
+            return React.createElement('div', { className: "min-h-screen bg-gray-50" },
+                React.createElement(SuggestionsModal),
+
+                // Header
+                React.createElement('div', { className: "bg-white border-b border-gray-200 px-6 py-4" },
+                    React.createElement('div', { className: "max-w-6xl mx-auto flex justify-between items-center" },
+                        React.createElement('div', { className: "flex items-center gap-4" },
+                            React.createElement('button', {
+                                onClick: () => setCurrentItinerary(null),
+                                className: "text-gray-600 hover:text-gray-800 text-lg"
+                            }, "‹"),
+                            React.createElement('h1', { className: "text-xl font-bold text-black" }, currentItinerary.title)
+                        ),
+                        React.createElement('div', { className: "flex gap-2" },
+                            React.createElement('button', {
+                                onClick: () => setShowSuggestions(true),
+                                className: "bg-black text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2"
+                            }, React.createElement(Icons.Search), "Suggestions"),
+                            isGoogleMapsLoaded && React.createElement('button', {
+                                onClick: () => setShowMap(!showMap),
+                                className: `px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${showMap
+                                    ? 'bg-green-600 text-white hover:bg-green-700'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`
+                            }, React.createElement(Icons.Map), showMap ? 'Hide Map' : 'Show Map')
+                        )
+                    )
+                ),
+
+                React.createElement('div', { className: "max-w-6xl mx-auto p-6" },
+                    // Trip Info Card
+                    React.createElement('div', { className: "bg-white rounded-2xl shadow-sm p-6 mb-6" },
+                        React.createElement('div', { className: "flex gap-6" },
+                            React.createElement('div', { className: "flex-1" },
+                                React.createElement('div', { className: "flex items-center gap-2 text-gray-600 mb-2" },
+                                    React.createElement(Icons.MapPin),
+                                    React.createElement('span', null, currentItinerary.destination)
+                                ),
+                                currentItinerary.startDate && currentItinerary.endDate && React.createElement('div', { className: "flex items-center gap-2 text-gray-600 mb-2" },
+                                    React.createElement(Icons.Calendar),
+                                    React.createElement('span', null,
+                                        new Date(currentItinerary.startDate).toLocaleDateString() + " - " + new Date(currentItinerary.endDate).toLocaleDateString()
+                                    )
+                                ),
+                                currentItinerary.guestCount && React.createElement('div', { className: "flex items-center gap-2 text-gray-600" },
+                                    React.createElement(Icons.Users),
+                                    React.createElement('span', null, `${currentItinerary.guestCount} guest${currentItinerary.guestCount > 1 ? 's' : ''}`)
+                                )
+                            ),
+                            currentItinerary.collaborators && currentItinerary.collaborators.length > 0 && React.createElement('div', { className: "text-right" },
+                                React.createElement('p', { className: "text-sm text-gray-600 mb-1" }, "Shared with:"),
+                                currentItinerary.collaborators.slice(0, 3).map(email => React.createElement('p', { key: email, className: "text-xs text-gray-500" }, email)),
+                                currentItinerary.collaborators.length > 3 && React.createElement('p', { className: "text-xs text-gray-500" }, `+${currentItinerary.collaborators.length - 3} more`)
+                            )
+                        ),
+
+                        showMap && isGoogleMapsLoaded && React.createElement('div', { className: "mt-6" },
+                            React.createElement('div', {
+                                ref: mapRef,
+                                className: "w-full h-96 rounded-xl border border-gray-200",
+                                style: { minHeight: '384px' }
+                            })
+                        )
+                    ),
+
+                    // Add Activity Form
+                    React.createElement('div', { className: "bg-white rounded-2xl shadow-sm p-6 mb-6" },
+                        React.createElement('h2', { className: "text-xl font-semibold mb-4" }, "Add Activity"),
+                        React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" },
+                            React.createElement('input', {
+                                type: "text",
+                                placeholder: "Activity title",
+                                value: newActivityForm.title,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, title: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                type: "date",
+                                value: newActivityForm.date,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, date: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                type: "time",
+                                value: newActivityForm.time,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, time: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                ref: locationInputRef,
+                                type: "text",
+                                placeholder: "Location",
+                                value: newActivityForm.location,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, location: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('textarea', {
+                                placeholder: "Description",
+                                value: newActivityForm.description,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, description: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2",
+                                rows: 2
+                            })
+                        ),
+                        React.createElement('button', {
+                            onClick: addActivity,
+                            className: "bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2"
+                        }, React.createElement(Icons.Plus), "Add Activity")
+                    ),
+
+                    // Activities Display
+                    Object.keys(activitiesByDate).length === 0 ? React.createElement('div', { className: "bg-white rounded-2xl shadow-sm p-8 text-center" },
+                        React.createElement('p', { className: "text-gray-500 text-lg mb-4" }, "No activities yet. Add your first activity or get suggestions!"),
+                        React.createElement('button', {
+                            onClick: () => setShowSuggestions(true),
+                            className: "bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2 mx-auto"
+                        }, React.createElement(Icons.Search), "Get Suggestions")
+                    ) : React.createElement('div', { className: "space-y-6" },
+                        Object.keys(activitiesByDate).sort().map(date => React.createElement('div', { key: date, className: "bg-white rounded-2xl shadow-sm p-6" },
+                            React.createElement('h3', { className: "text-xl font-semibold text-gray-800 mb-4" }, formatDate(date)),
+                            React.createElement('div', { className: "space-y-4" },
+                                activitiesByDate[date].map(activity => React.createElement('div', { key: activity.id, className: "border border-gray-200 rounded-xl p-4" },
+                                    editingActivity === activity.id ? React.createElement('div', { className: "space-y-4" },
+                                        React.createElement('input', {
+                                            type: "text",
+                                            defaultValue: activity.title,
+                                            className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        }),
+                                        React.createElement('div', { className: "flex gap-2" },
+                                            React.createElement('button', {
+                                                onClick: () => setEditingActivity(null),
+                                                className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                            }, "Save"),
+                                            React.createElement('button', {
+                                                onClick: () => setEditingActivity(null),
+                                                className: "bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                                            }, "Cancel")
+                                        )
+                                    ) : React.createElement('div', { className: "flex justify-between items-start" },
+                                        React.createElement('div', { className: "flex gap-4 flex-1" },
+                                            activity.image && React.createElement('img', {
+                                                src: activity.image,
+                                                alt: activity.title,
+                                                className: "w-20 h-20 object-cover rounded-xl"
+                                            }),
+                                            React.createElement('div', { className: "flex-1" },
+                                                React.createElement('div', { className: "flex items-center gap-2 mb-2" },
+                                                    React.createElement('h4', { className: "text-lg font-semibold text-gray-800" }, activity.title),
+                                                    activity.source === 'tripadvisor' && React.createElement('span', { className: "activity-type-badge text-white text-xs px-2 py-1 rounded-full" }, "TripAdvisor"),
+                                                    activity.rating && React.createElement('div', { className: "flex items-center gap-1 text-yellow-600" },
+                                                        React.createElement(Icons.Star),
+                                                        React.createElement('span', { className: "text-sm" }, activity.rating)
+                                                    )
+                                                ),
+                                                activity.time && React.createElement('p', { className: "text-sm text-gray-600 flex items-center gap-1 mt-1" },
+                                                    React.createElement(Icons.Clock),
+                                                    activity.time
+                                                ),
+                                                activity.location && React.createElement('p', { className: "text-sm text-gray-600 flex items-center gap-1 mt-1" },
+                                                    React.createElement(Icons.MapPin),
+                                                    activity.location
+                                                ),
+                                                activity.description && React.createElement('p', { className: "text-gray-700 mt-2 text-sm" },
+                                                    activity.description.length > 200 ? activity.description.substring(0, 200) + '...' : activity.description
+                                                )
+                                            )
+                                        ),
+                                        React.createElement('div', { className: "flex gap-2 ml-4" },
+                                            React.createElement('button', {
+                                                onClick: () => setEditingActivity(activity.id),
+                                                className: "text-blue-600 hover:text-blue-800 transition-colors p-2"
+                                            }, React.createElement(Icons.Edit3)),
+                                            React.createElement('button', {
+                                                onClick: () => deleteActivity(activity.id),
+                                                className: "text-red-500 hover:text-red-700 transition-colors p-2"
+                                            }, React.createElement(Icons.Trash2))
+                                        )
+                                    )
+                                ))
+                            )
+                        ))
+                    )
+                )
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ItineraryApp));

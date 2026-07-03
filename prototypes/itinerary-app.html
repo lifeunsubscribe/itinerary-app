@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Itinerary Planner</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .icon {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Simple icon components using Unicode symbols
+        const Icons = {
+            Plus: () => React.createElement('span', { className: 'icon' }, '➕'),
+            MapPin: () => React.createElement('span', { className: 'icon' }, '📍'),
+            Clock: () => React.createElement('span', { className: 'icon' }, '🕐'),
+            Calendar: () => React.createElement('span', { className: 'icon' }, '📅'),
+            Trash2: () => React.createElement('span', { className: 'icon' }, '🗑️'),
+            Edit3: () => React.createElement('span', { className: 'icon' }, '✏️'),
+            Save: () => React.createElement('span', { className: 'icon' }, '💾'),
+            X: () => React.createElement('span', { className: 'icon' }, '❌'),
+            Map: () => React.createElement('span', { className: 'icon' }, '🗺️'),
+        };
+
+        const ItineraryApp = () => {
+            const [itineraries, setItineraries] = useState([]);
+            const [currentItinerary, setCurrentItinerary] = useState(null);
+            const [showNewItinerary, setShowNewItinerary] = useState(false);
+            const [editingActivity, setEditingActivity] = useState(null);
+            const [showMap, setShowMap] = useState(false);
+            const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
+
+            const destinationInputRef = useRef(null);
+            const locationInputRef = useRef(null);
+            const mapRef = useRef(null);
+            const autocompleteRefs = useRef({});
+
+            const [newItineraryForm, setNewItineraryForm] = useState({
+                title: '',
+                destination: '',
+                startDate: '',
+                endDate: ''
+            });
+
+            const [newActivityForm, setNewActivityForm] = useState({
+                title: '',
+                time: '',
+                location: '',
+                description: '',
+                date: ''
+            });
+
+            // Load Google Maps API
+            useEffect(() => {
+                if (window.google && window.google.maps) {
+                    setIsGoogleMapsLoaded(true);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyBqOElaccMFiQmEbW1ly0JyaTeUJBcvebY&libraries=places`;
+                script.async = true;
+                script.defer = true;
+                script.onload = () => {
+                    console.log('Google Maps API loaded successfully');
+                    setIsGoogleMapsLoaded(true);
+                };
+                script.onerror = (error) => {
+                    console.warn('Google Maps API failed to load:', error);
+                };
+
+                document.head.appendChild(script);
+            }, []);
+
+            // Initialize autocomplete for destination input
+            useEffect(() => {
+                if (isGoogleMapsLoaded && destinationInputRef.current && window.google) {
+                    try {
+                        const autocomplete = new window.google.maps.places.Autocomplete(
+                            destinationInputRef.current,
+                            {
+                                types: ['(cities)'],
+                                fields: ['formatted_address', 'geometry', 'name']
+                            }
+                        );
+
+                        autocomplete.addListener('place_changed', () => {
+                            const place = autocomplete.getPlace();
+                            if (place && place.formatted_address) {
+                                setNewItineraryForm(prev => ({
+                                    ...prev,
+                                    destination: place.formatted_address
+                                }));
+                            }
+                        });
+
+                        autocompleteRefs.current.destination = autocomplete;
+                    } catch (error) {
+                        console.warn('Failed to initialize destination autocomplete:', error);
+                    }
+                }
+            }, [isGoogleMapsLoaded, showNewItinerary]);
+
+            // Initialize autocomplete for activity location input
+            useEffect(() => {
+                if (isGoogleMapsLoaded && locationInputRef.current && window.google) {
+                    try {
+                        const autocomplete = new window.google.maps.places.Autocomplete(
+                            locationInputRef.current,
+                            {
+                                fields: ['formatted_address', 'geometry', 'name']
+                            }
+                        );
+
+                        autocomplete.addListener('place_changed', () => {
+                            const place = autocomplete.getPlace();
+                            if (place && place.formatted_address) {
+                                setNewActivityForm(prev => ({
+                                    ...prev,
+                                    location: place.formatted_address
+                                }));
+                            }
+                        });
+
+                        autocompleteRefs.current.location = autocomplete;
+                    } catch (error) {
+                        console.warn('Failed to initialize location autocomplete:', error);
+                    }
+                }
+            }, [isGoogleMapsLoaded, currentItinerary]);
+
+            // Initialize map when itinerary is opened
+            useEffect(() => {
+                if (isGoogleMapsLoaded && currentItinerary && showMap && mapRef.current && window.google) {
+                    setTimeout(() => initializeMap(), 100); // Small delay to ensure DOM is ready
+                }
+            }, [isGoogleMapsLoaded, currentItinerary, showMap]);
+
+            const initializeMap = () => {
+                if (!window.google || !mapRef.current) {
+                    console.warn('Google Maps or map container not available');
+                    return;
+                }
+
+                try {
+                    const map = new window.google.maps.Map(mapRef.current, {
+                        zoom: 13,
+                        center: { lat: 40.7128, lng: -74.0060 }, // Default to NYC
+                        mapTypeId: window.google.maps.MapTypeId.ROADMAP
+                    });
+
+                    const bounds = new window.google.maps.LatLngBounds();
+                    const geocoder = new window.google.maps.Geocoder();
+
+                    // Geocode destination and center map
+                    if (currentItinerary.destination) {
+                        geocoder.geocode({ address: currentItinerary.destination }, (results, status) => {
+                            if (status === 'OK' && results[0]) {
+                                const location = results[0].geometry.location;
+                                map.setCenter(location);
+
+                                // Add destination marker
+                                new window.google.maps.Marker({
+                                    position: location,
+                                    map: map,
+                                    title: currentItinerary.destination,
+                                    icon: {
+                                        url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+                                    }
+                                });
+
+                                bounds.extend(location);
+                            }
+                        });
+                    }
+
+                    // Add markers for activities with locations
+                    const activitiesWithLocations = currentItinerary.activities.filter(activity => activity.location);
+
+                    activitiesWithLocations.forEach((activity, index) => {
+                        geocoder.geocode({ address: activity.location }, (results, status) => {
+                            if (status === 'OK' && results[0]) {
+                                const location = results[0].geometry.location;
+
+                                const marker = new window.google.maps.Marker({
+                                    position: location,
+                                    map: map,
+                                    title: activity.title,
+                                    label: (index + 1).toString()
+                                });
+
+                                const infoWindow = new window.google.maps.InfoWindow({
+                                    content: `
+                                        <div>
+                                            <h3 style="margin: 0 0 8px 0; font-weight: bold;">${activity.title}</h3>
+                                            ${activity.date ? `<p style="margin: 4px 0; color: #666;"><strong>Date:</strong> ${formatDate(activity.date)}</p>` : ''}
+                                            ${activity.time ? `<p style="margin: 4px 0; color: #666;"><strong>Time:</strong> ${activity.time}</p>` : ''}
+                                            ${activity.location ? `<p style="margin: 4px 0; color: #666;"><strong>Location:</strong> ${activity.location}</p>` : ''}
+                                            ${activity.description ? `<p style="margin: 8px 0 0 0;">${activity.description}</p>` : ''}
+                                        </div>
+                                    `
+                                });
+
+                                marker.addListener('click', () => {
+                                    infoWindow.open(map, marker);
+                                });
+
+                                bounds.extend(location);
+
+                                // Fit map to show all markers if we have multiple locations
+                                if (activitiesWithLocations.length > 1 || currentItinerary.destination) {
+                                    map.fitBounds(bounds);
+                                }
+                            }
+                        });
+                    });
+
+                    console.log('Map initialized successfully');
+                } catch (error) {
+                    console.error('Failed to initialize map:', error);
+                }
+            };
+
+            const createItinerary = () => {
+                if (!newItineraryForm.title || !newItineraryForm.destination) return;
+
+                const itinerary = {
+                    id: Date.now(),
+                    ...newItineraryForm,
+                    activities: []
+                };
+
+                setItineraries([...itineraries, itinerary]);
+                setCurrentItinerary(itinerary);
+                setNewItineraryForm({ title: '', destination: '', startDate: '', endDate: '' });
+                setShowNewItinerary(false);
+            };
+
+            const addActivity = () => {
+                if (!newActivityForm.title || !newActivityForm.date) return;
+
+                const activity = {
+                    id: Date.now(),
+                    ...newActivityForm
+                };
+
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: [...currentItinerary.activities, activity].sort((a, b) =>
+                        new Date(a.date + ' ' + (a.time || '00:00')) - new Date(b.date + ' ' + (b.time || '00:00'))
+                    )
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+                setNewActivityForm({ title: '', time: '', location: '', description: '', date: '' });
+            };
+
+            const deleteActivity = (activityId) => {
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: currentItinerary.activities.filter(a => a.id !== activityId)
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+            };
+
+            const updateActivity = (activityId, updatedActivity) => {
+                const updatedItinerary = {
+                    ...currentItinerary,
+                    activities: currentItinerary.activities.map(a =>
+                        a.id === activityId ? { ...a, ...updatedActivity } : a
+                    ).sort((a, b) =>
+                        new Date(a.date + ' ' + (a.time || '00:00')) - new Date(b.date + ' ' + (b.time || '00:00'))
+                    )
+                };
+
+                setCurrentItinerary(updatedItinerary);
+                setItineraries(itineraries.map(it => it.id === currentItinerary.id ? updatedItinerary : it));
+                setEditingActivity(null);
+            };
+
+            const deleteItinerary = (itineraryId) => {
+                setItineraries(itineraries.filter(it => it.id !== itineraryId));
+                if (currentItinerary && currentItinerary.id === itineraryId) {
+                    setCurrentItinerary(null);
+                }
+            };
+
+            const formatDate = (dateString) => {
+                return new Date(dateString).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            };
+
+            const groupActivitiesByDate = (activities) => {
+                return activities.reduce((groups, activity) => {
+                    const date = activity.date;
+                    if (!groups[date]) groups[date] = [];
+                    groups[date].push(activity);
+                    return groups;
+                }, {});
+            };
+
+            const EditActivityForm = ({ activity, onSave, onCancel }) => {
+                const [formData, setFormData] = useState(activity);
+                const editLocationRef = useRef(null);
+
+                useEffect(() => {
+                    if (isGoogleMapsLoaded && editLocationRef.current && window.google) {
+                        try {
+                            const autocomplete = new window.google.maps.places.Autocomplete(
+                                editLocationRef.current,
+                                {
+                                    fields: ['formatted_address', 'geometry', 'name']
+                                }
+                            );
+
+                            autocomplete.addListener('place_changed', () => {
+                                const place = autocomplete.getPlace();
+                                if (place && place.formatted_address) {
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        location: place.formatted_address
+                                    }));
+                                }
+                            });
+                        } catch (error) {
+                            console.warn('Failed to initialize edit autocomplete:', error);
+                        }
+                    }
+                }, [isGoogleMapsLoaded]);
+
+                const handleSave = () => {
+                    if (!formData.title || !formData.date) return;
+                    onSave(formData);
+                };
+
+                return React.createElement('div', { className: "space-y-4" },
+                    React.createElement('input', {
+                        type: "text",
+                        value: formData.title,
+                        onChange: (e) => setFormData({ ...formData, title: e.target.value }),
+                        className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    }),
+                    React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+                        React.createElement('input', {
+                            type: "date",
+                            value: formData.date,
+                            onChange: (e) => setFormData({ ...formData, date: e.target.value }),
+                            className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        }),
+                        React.createElement('input', {
+                            type: "time",
+                            value: formData.time,
+                            onChange: (e) => setFormData({ ...formData, time: e.target.value }),
+                            className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        })
+                    ),
+                    React.createElement('input', {
+                        ref: editLocationRef,
+                        type: "text",
+                        value: formData.location,
+                        onChange: (e) => setFormData({ ...formData, location: e.target.value }),
+                        className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        placeholder: "Location"
+                    }),
+                    React.createElement('textarea', {
+                        value: formData.description,
+                        onChange: (e) => setFormData({ ...formData, description: e.target.value }),
+                        className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        placeholder: "Description",
+                        rows: 2
+                    }),
+                    React.createElement('div', { className: "flex gap-2" },
+                        React.createElement('button', {
+                            onClick: handleSave,
+                            className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        }, React.createElement(Icons.Save), "Save"),
+                        React.createElement('button', {
+                            onClick: onCancel,
+                            className: "bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-2"
+                        }, React.createElement(Icons.X), "Cancel")
+                    )
+                );
+            };
+
+            if (!currentItinerary) {
+                return React.createElement('div', { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6" },
+                    React.createElement('div', { className: "max-w-4xl mx-auto" },
+                        React.createElement('div', { className: "text-center mb-8" },
+                            React.createElement('h1', { className: "text-4xl font-bold text-gray-800 mb-2" }, "Travel Itinerary Planner"),
+                            React.createElement('p', { className: "text-gray-600" }, "Organize your perfect trip with maps"),
+                            !isGoogleMapsLoaded && React.createElement('p', { className: "text-sm text-blue-600 mt-2" }, "🗺️ Loading Google Maps..."),
+                            React.createElement('div', { className: "mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" },
+                                React.createElement('h3', { className: "font-semibold mb-2" }, "📝 Google Maps Setup Required"),
+                                React.createElement('p', { className: "mb-2" }, "To enable autocomplete and maps, ensure your API key has these services enabled:"),
+                                React.createElement('ul', { className: "list-disc list-inside space-y-1 mb-2" },
+                                    React.createElement('li', null, "Maps JavaScript API"),
+                                    React.createElement('li', null, "Places API"),
+                                    React.createElement('li', null, "Geocoding API")
+                                ),
+                                React.createElement('p', { className: "text-xs" }, "Visit the Google Cloud Console to enable these APIs and set up billing.")
+                            )
+                        ),
+
+                        showNewItinerary ? React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                            React.createElement('h2', { className: "text-2xl font-semibold mb-4" }, "Create New Itinerary"),
+                            React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" },
+                                React.createElement('input', {
+                                    type: "text",
+                                    placeholder: "Trip Title",
+                                    value: newItineraryForm.title,
+                                    onChange: (e) => setNewItineraryForm({ ...newItineraryForm, title: e.target.value }),
+                                    className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                }),
+                                React.createElement('input', {
+                                    ref: destinationInputRef,
+                                    type: "text",
+                                    placeholder: "Destination (try typing 'Paris, France')",
+                                    value: newItineraryForm.destination,
+                                    onChange: (e) => setNewItineraryForm({ ...newItineraryForm, destination: e.target.value }),
+                                    className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                }),
+                                React.createElement('input', {
+                                    type: "date",
+                                    value: newItineraryForm.startDate,
+                                    onChange: (e) => setNewItineraryForm({ ...newItineraryForm, startDate: e.target.value }),
+                                    className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                }),
+                                React.createElement('input', {
+                                    type: "date",
+                                    value: newItineraryForm.endDate,
+                                    onChange: (e) => setNewItineraryForm({ ...newItineraryForm, endDate: e.target.value }),
+                                    className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                })
+                            ),
+                            React.createElement('div', { className: "flex gap-2" },
+                                React.createElement('button', {
+                                    onClick: createItinerary,
+                                    className: "bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                }, React.createElement(Icons.Save), "Create Itinerary"),
+                                React.createElement('button', {
+                                    onClick: () => setShowNewItinerary(false),
+                                    className: "bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-2"
+                                }, React.createElement(Icons.X), "Cancel")
+                            )
+                        ) : React.createElement('div', { className: "text-center mb-8" },
+                            React.createElement('button', {
+                                onClick: () => setShowNewItinerary(true),
+                                className: "bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto text-lg"
+                            }, React.createElement(Icons.Plus), "Create New Itinerary")
+                        ),
+
+                        itineraries.length > 0 && React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6" },
+                            React.createElement('h2', { className: "text-2xl font-semibold mb-4" }, "Your Itineraries"),
+                            React.createElement('div', { className: "grid gap-4" },
+                                itineraries.map(itinerary => React.createElement('div', {
+                                    key: itinerary.id,
+                                    className: "border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                                },
+                                    React.createElement('div', { className: "flex justify-between items-start" },
+                                        React.createElement('div', { className: "flex-1" },
+                                            React.createElement('h3', { className: "text-xl font-semibold text-gray-800" }, itinerary.title),
+                                            React.createElement('p', { className: "text-gray-600 flex items-center gap-1 mt-1" },
+                                                React.createElement(Icons.MapPin),
+                                                itinerary.destination
+                                            ),
+                                            itinerary.startDate && itinerary.endDate && React.createElement('p', { className: "text-sm text-gray-500 flex items-center gap-1 mt-1" },
+                                                React.createElement(Icons.Calendar),
+                                                formatDate(itinerary.startDate) + " - " + formatDate(itinerary.endDate)
+                                            ),
+                                            React.createElement('p', { className: "text-sm text-gray-500 mt-1" },
+                                                itinerary.activities.length + " activities"
+                                            )
+                                        ),
+                                        React.createElement('div', { className: "flex gap-2" },
+                                            React.createElement('button', {
+                                                onClick: () => setCurrentItinerary(itinerary),
+                                                className: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                            }, "View"),
+                                            React.createElement('button', {
+                                                onClick: () => deleteItinerary(itinerary.id),
+                                                className: "bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 transition-colors"
+                                            }, React.createElement(Icons.Trash2))
+                                        )
+                                    )
+                                ))
+                            )
+                        )
+                    )
+                );
+            }
+
+            const activitiesByDate = groupActivitiesByDate(currentItinerary.activities);
+
+            return React.createElement('div', { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6" },
+                React.createElement('div', { className: "max-w-6xl mx-auto" },
+                    React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                        React.createElement('div', { className: "flex justify-between items-start mb-4" },
+                            React.createElement('div', null,
+                                React.createElement('h1', { className: "text-3xl font-bold text-gray-800" }, currentItinerary.title),
+                                React.createElement('p', { className: "text-gray-600 flex items-center gap-1 mt-1" },
+                                    React.createElement(Icons.MapPin),
+                                    currentItinerary.destination
+                                ),
+                                currentItinerary.startDate && currentItinerary.endDate && React.createElement('p', { className: "text-sm text-gray-500 flex items-center gap-1 mt-1" },
+                                    React.createElement(Icons.Calendar),
+                                    formatDate(currentItinerary.startDate) + " - " + formatDate(currentItinerary.endDate)
+                                )
+                            ),
+                            React.createElement('div', { className: "flex gap-2" },
+                                isGoogleMapsLoaded && React.createElement('button', {
+                                    onClick: () => setShowMap(!showMap),
+                                    className: `px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${showMap
+                                            ? 'bg-green-600 text-white hover:bg-green-700'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                                        }`
+                                }, React.createElement(Icons.Map), showMap ? 'Hide Map' : 'Show Map'),
+                                React.createElement('button', {
+                                    onClick: () => setCurrentItinerary(null),
+                                    className: "bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                                }, "Back to List")
+                            )
+                        ),
+
+                        showMap && isGoogleMapsLoaded && React.createElement('div', { className: "mt-4" },
+                            React.createElement('div', {
+                                ref: mapRef,
+                                className: "w-full h-96 rounded-lg border border-gray-300",
+                                style: { minHeight: '384px' }
+                            })
+                        )
+                    ),
+
+                    // Add Activity Form
+                    React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-6 mb-6" },
+                        React.createElement('h2', { className: "text-2xl font-semibold mb-4" }, "Add New Activity"),
+                        React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" },
+                            React.createElement('input', {
+                                type: "text",
+                                placeholder: "Activity Title",
+                                value: newActivityForm.title,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, title: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                type: "date",
+                                value: newActivityForm.date,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, date: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                type: "time",
+                                value: newActivityForm.time,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, time: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('input', {
+                                ref: locationInputRef,
+                                type: "text",
+                                placeholder: "Location (try 'Eiffel Tower')",
+                                value: newActivityForm.location,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, location: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            }),
+                            React.createElement('textarea', {
+                                placeholder: "Description",
+                                value: newActivityForm.description,
+                                onChange: (e) => setNewActivityForm({ ...newActivityForm, description: e.target.value }),
+                                className: "p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2",
+                                rows: 2
+                            })
+                        ),
+                        React.createElement('button', {
+                            onClick: addActivity,
+                            className: "bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                        }, React.createElement(Icons.Plus), "Add Activity")
+                    ),
+
+                    // Activities Display
+                    Object.keys(activitiesByDate).length === 0 ? React.createElement('div', { className: "bg-white rounded-lg shadow-lg p-8 text-center" },
+                        React.createElement('p', { className: "text-gray-500 text-lg" }, "No activities yet. Add your first activity above!")
+                    ) : React.createElement('div', { className: "space-y-6" },
+                        Object.keys(activitiesByDate).sort().map(date => React.createElement('div', { key: date, className: "bg-white rounded-lg shadow-lg p-6" },
+                            React.createElement('h3', { className: "text-xl font-semibold text-gray-800 mb-4" }, formatDate(date)),
+                            React.createElement('div', { className: "space-y-4" },
+                                activitiesByDate[date].map(activity => React.createElement('div', { key: activity.id, className: "border border-gray-200 rounded-lg p-4" },
+                                    editingActivity === activity.id ? React.createElement(EditActivityForm, {
+                                        activity: activity,
+                                        onSave: (updatedActivity) => updateActivity(activity.id, updatedActivity),
+                                        onCancel: () => setEditingActivity(null)
+                                    }) : React.createElement('div', { className: "flex justify-between items-start" },
+                                        React.createElement('div', { className: "flex-1" },
+                                            React.createElement('h4', { className: "text-lg font-semibold text-gray-800" }, activity.title),
+                                            activity.time && React.createElement('p', { className: "text-sm text-gray-600 flex items-center gap-1 mt-1" },
+                                                React.createElement(Icons.Clock),
+                                                activity.time
+                                            ),
+                                            activity.location && React.createElement('p', { className: "text-sm text-gray-600 flex items-center gap-1 mt-1" },
+                                                React.createElement(Icons.MapPin),
+                                                activity.location
+                                            ),
+                                            activity.description && React.createElement('p', { className: "text-gray-700 mt-2" }, activity.description)
+                                        ),
+                                        React.createElement('div', { className: "flex gap-2 ml-4" },
+                                            React.createElement('button', {
+                                                onClick: () => setEditingActivity(activity.id),
+                                                className: "text-blue-600 hover:text-blue-800 transition-colors"
+                                            }, React.createElement(Icons.Edit3)),
+                                            React.createElement('button', {
+                                                onClick: () => deleteActivity(activity.id),
+                                                className: "text-red-500 hover:text-red-700 transition-colors"
+                                            }, React.createElement(Icons.Trash2))
+                                        )
+                                    )
+                                ))
+                            )
+                        ))
+                    )
+                )
+            );
+        };
+
+        ReactDOM.render(React.createElement(ItineraryApp), document.getElementById('root'));
+    </script>
+</body>
+
+</html>
