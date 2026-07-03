@@ -1,70 +1,172 @@
-# Getting Started with Create React App
+Wanderly - Travel Itinerary Planner
+A modern, modular React application for planning travel itineraries with Google Maps integration and TripAdvisor suggestions.
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Project Structure
+wanderly/
+├── public/
+│   ├── index.html
+│   └── favicon.ico
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Icons.js              # Lucide icon components ✅
+│   │   │   ├── Button.js             # Reusable button component ✅
+│   │   │   └── Modal.js              # Modal wrapper component ✅
+│   │   └── layout/
+│   │       └── Header.js             # App header with navigation ✅
+│   ├── hooks/
+│   │   ├── useGoogleMaps.js          # Google Maps API management ✅
+│   │   ├── useTripAdvisor.js         # TripAdvisor API integration ✅
+│   │   ├── useItinerary.js           # Itinerary state management ✅
+│   │   └── useLocalStorage.js        # Persistent storage ✅
+│   ├── services/
+│   │   ├── googleMapsService.js      # Maps API functions ✅
+│   │   ├── tripAdvisorService.js     # TripAdvisor API functions ✅
+│   │   └── storageService.js         # Local storage utilities ✅
+│   ├── data/
+│   │   ├── destinations.js           # Popular destinations data ✅
+│   │   └── activityTypes.js          # Activity type definitions ✅
+│   ├── utils/
+│   │   ├── dateUtils.js              # Date formatting utilities ✅
+│   │   └── validators.js             # Form validation functions ✅
+│   ├── styles/
+│   │   └── global.css                # Global styles and Tailwind ✅
+│   ├── App.js                        # Main application component ✅
+│   └── index.js                      # React DOM entry point ✅
+├── .env                              # Environment variables
+├── package.json                      # Dependencies and scripts
+├── tailwind.config.js               # Tailwind CSS configuration
+└── README.md                        # This file
+Quick Start
+1. Initialize Project
+bash
+# Create React app
+npx create-react-app wanderly
+cd wanderly
 
-## Available Scripts
+# Install dependencies
+npm install lucide-react
+npm install -D tailwindcss postcss autoprefixer
 
-In the project directory, you can run:
+# Initialize Tailwind
+npx tailwindcss init -p
+2. Configure Tailwind CSS
+Update tailwind.config.js:
 
-### `npm start`
+js
+module.exports = {
+  content: [
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+3. Environment Setup
+Create .env file in project root:
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+REACT_APP_TRIPADVISOR_API_KEY=your_tripadvisor_api_key
+4. Replace Files
+Replace the generated package.json with the provided one
+Create all the files in the structure above
+Replace src/index.js and src/App.js with provided versions
+Remove default files: App.css, App.test.js, logo.svg, reportWebVitals.js, setupTests.js
+5. Start Development
+bash
+npm install
+npm start
+Key Architecture Decisions
+Modular Structure
+Each feature is isolated in its own module, making debugging and testing easier. The Google Maps integration was particularly problematic in the monolithic version, so it's now completely separate.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Service Layer
+API integrations are abstracted into service files:
 
-### `npm test`
+googleMapsService.js: Handles all Google Maps API calls with proper error handling
+tripAdvisorService.js: Manages TripAdvisor API with fallback mock data
+storageService.js: Centralizes localStorage operations
+Custom Hooks
+State management is handled through custom hooks:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+useGoogleMaps: Manages Maps API loading state and provides map functions
+useItinerary: Handles all itinerary CRUD operations
+useLocalStorage: Abstracts localStorage with error handling
+Error Resilience
+Google Maps failures are isolated and don't break the app
+TripAdvisor API falls back to mock data when unavailable
+All storage operations include try/catch blocks
+Development Phases
+Phase 1: Foundation (Current)
+Basic app structure
+Data layer and utilities
+Service layer skeleton
+Header and navigation
+Phase 2: Core Features
+NewItineraryModal with multi-step flow
+ActivityForm and ActivityList components
+Basic itinerary management
+Phase 3: API Integration
+TripAdvisor suggestions modal
+Mock data for development
+Error handling for API failures
+Phase 4: Maps Integration
+Google Maps component
+Location autocomplete
+Activity mapping
+Phase 5: Polish
+Advanced features
+Performance optimization
+Testing
+API Keys Setup
+Google Maps API
+Go to Google Cloud Console
+Enable Maps JavaScript API and Places API
+Create API key and restrict to your domain
+Add key to .env file
+TripAdvisor API
+Sign up at TripAdvisor Content API
+Get API key from dashboard
+Add key to .env file
+Common Issues & Solutions
+Google Maps Not Loading
+Check API key is correct in .env
+Verify Maps JavaScript API is enabled
+Check browser console for specific errors
+The isolated service makes debugging much easier
+TripAdvisor CORS Issues
+Uses CORS proxy in development
+Falls back to mock data automatically
+Check network tab for failed requests
+Build Errors
+Ensure all imports are correct
+Check that Tailwind config matches file structure
+Verify all dependencies are installed
+Scripts
+bash
+npm start          # Start development server
+npm build          # Build for production
+npm test           # Run tests
+npm eject          # Eject from Create React App (not recommended)
+Contributing
+Create feature branch from main
+Implement changes in appropriate module
+Test both success and error cases
+Update this README if adding new features
+Submit pull request
+Next Steps
+Test the foundation: Run the current code to verify basic structure works
+Add NewItineraryModal: Multi-step trip creation flow
+Implement ActivityForm: Add/edit activities with location autocomplete
+Create SuggestionsModal: TripAdvisor integration with fallbacks
+Add Google Maps: Isolated map component with activity markers
+Technology Stack
+React 18: UI framework
+Tailwind CSS: Styling
+Lucide React: Icons
+Google Maps API: Mapping and places
+TripAdvisor Content API: Activity suggestions
+localStorage: Data persistence
+The modular structure makes it easy to swap out any of these technologies if needed.
 
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
